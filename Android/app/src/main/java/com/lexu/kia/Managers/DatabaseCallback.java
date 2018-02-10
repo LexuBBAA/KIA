@@ -3,6 +3,10 @@ package com.lexu.kia.Managers;
 import android.support.annotation.Nullable;
 
 public interface DatabaseCallback {
+    void onComplete(ResponseData response);
+
+    void onFailure(ResponseData response);
+
     enum ResponseStatus {
         SUCCESS, FAILURE
     }
@@ -19,20 +23,20 @@ public interface DatabaseCallback {
             return mStatus;
         }
 
-        public T getData() {
-            return mData;
-        }
-
-        public String getMessage() {
-            return mMessage;
-        }
-
         void setStatus(ResponseStatus status) {
             mStatus = status;
         }
 
+        public T getData() {
+            return mData;
+        }
+
         void setData(T data) {
             mData = data;
+        }
+
+        public String getMessage() {
+            return mMessage;
         }
 
         void setMessage(String message) {
@@ -65,7 +69,4 @@ public interface DatabaseCallback {
             }
         }
     }
-
-    void onComplete(ResponseData response);
-    void onFailure(ResponseData response);
 }

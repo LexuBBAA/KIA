@@ -42,7 +42,7 @@ public class DatabaseManager {
     }
 
     final synchronized void get() {
-        if(mQuery.length() == 0) {
+        if (mQuery.length() == 0) {
             mCallback.onFailure(
                     new DatabaseCallback.ResponseData.Builder<String>()
                             .data("There was no body inside the query")
@@ -59,8 +59,8 @@ public class DatabaseManager {
         cursor.close();
     }
 
-    final synchronized void post() {
-        if(mItems.size() == 0) {
+    final synchronized void post(boolean isUpdate) {
+        if (mItems.size() == 0) {
             mCallback.onFailure(
                     new DatabaseCallback.ResponseData.Builder<String>()
                             .data("There were no items sent for processing")
@@ -71,14 +71,21 @@ public class DatabaseManager {
             return;
         }
 
-        for(ContentValues cv: mItems) {
-            long id = mDatabase.insert(
-                    DatabaseUtils.FeedReaderContract.FeedEntry.TABLE_NAME,
-                    null,
-                    cv
-            );
+        for (ContentValues cv : mItems) {
+            long id = isUpdate ?
+                    mDatabase.update(
+                            DatabaseUtils.FeedReaderContract.FeedEntry.TABLE_NAME,
+                            cv,
+                            DatabaseUtils.FeedReaderContract.FeedEntry._ID + " = ?",
+                            new String[]{String.valueOf(cv.getAsFloat(DatabaseUtils.FeedReaderContract.FeedEntry._ID))}
+                    ) :
+                    mDatabase.insert(
+                            DatabaseUtils.FeedReaderContract.FeedEntry.TABLE_NAME,
+                            null,
+                            cv
+                    );
 
-            if(id == -1) {
+            if (id == -1 && !isUpdate) {
                 mCallback.onFailure(
                         new DatabaseCallback.ResponseData.Builder<String>()
                                 .data("The record could not be inserted; error: " + id)
@@ -87,12 +94,29 @@ public class DatabaseManager {
                                 .build()
                 );
                 return;
+            } else if (id == 0 && isUpdate) {
+                mCallback.onFailure(
+                        new DatabaseCallback.ResponseData.Builder<String>()
+                                .data("The record could not be updated")
+                                .message("Error updating record")
+                                .status(DatabaseCallback.ResponseStatus.FAILURE)
+                                .build()
+                );
+                return;
             }
+
+            mCallback.onComplete(
+                    new DatabaseCallback.ResponseData.Builder<Float>()
+                            .message(isUpdate ? "Record updated successfully" : "Record inserted successfully")
+                            .data((float) id)
+                            .status(DatabaseCallback.ResponseStatus.SUCCESS)
+                            .build()
+            );
         }
     }
 
     final void close() {
-        if(mDatabase != null) {
+        if (mDatabase != null) {
             mDatabase.close();
         }
     }
@@ -100,20 +124,24 @@ public class DatabaseManager {
     public static final class Builder {
         private DatabaseManager databaseManager = null;
 
+        private String search = null;
         private float latitude = 0;
         private float longitude = 0;
         private float range = 0;
+        private boolean isUpdate = false;
 
         private String query = null;
         private ArrayList<ContentValues> contentValues = null;
+        private DatabaseCallback callback = null;
 
         /**
          * Set the context used to open / create the database connection
+         *
          * @param context that is to be used for opening / creating the database connection
          * @return the Builder instance used for database instantiation
          */
         public final synchronized Builder with(Context context) {
-            if(this.databaseManager == null) {
+            if (this.databaseManager == null) {
                 this.databaseManager = new DatabaseManager(context);
             }
 
@@ -122,8 +150,9 @@ public class DatabaseManager {
 
         /**
          * Set user's current position
-         * @param lat of the user at that moment in time
-         * @param lng of the user at that moment in time
+         *
+         * @param lat   of the user at that moment in time
+         * @param lng   of the user at that moment in time
          * @param range set by the user
          * @return the Builder instance used for database instantiation
          */
@@ -135,17 +164,28 @@ public class DatabaseManager {
         }
 
         /**
+         * Set the search criteria
+         *
+         * @param name of the location to search for
+         * @return the Builder instance used for database instantiation
+         */
+        public final Builder search(String name) {
+            this.search = name;
+            return this;
+        }
+
+        /**
          * Usage of this method is optional; It should be used for
          * initiating the DB, clearing it of data, or retrieving data.
-         *
+         * <p>
          * Generate the required request type
-         * @see DatabaseUtils.DatabaseRequestType
          *
          * @param requestType to generate the required query content
          * @return the Builder instance used for database instantiation
+         * @see DatabaseUtils.DatabaseRequestType
          */
         public final Builder option(DatabaseUtils.DatabaseRequestType requestType) {
-            switch (requestType) {   //TODO: Replace query init with generation of query according to requestType
+            switch (requestType) {
                 case CREATE_TABLE:
                     this.query = DatabaseQueryBuilder.createTable();
                     break;
@@ -157,6 +197,10 @@ public class DatabaseManager {
                 case GET_LOCATIONS:
                     this.query = DatabaseQueryBuilder.selectAll(this.latitude, this.longitude, this.range);
                     break;
+
+                case GET_BY_NAME:
+                    this.query = DatabaseQueryBuilder.selectByName(this.latitude, this.longitude, this.range, this.search);
+                    break;
             }
 
             return this;
@@ -164,30 +208,55 @@ public class DatabaseManager {
 
         /**
          * Sets the callback to be used once the processing of the query has been completed
+         *
          * @return the Builder instance used for database instantiation
          */
-        public final Builder callback() {
-            //TODO: create the actual Callback type and set it for further use
+        public final Builder callback(DatabaseCallback callback) {
+            this.callback = callback;
+            return this;
+        }
+
+        /**
+         * Sets the flag for updating / inserting new records in the database
+         *
+         * @param isUpdate operation to be done on the database
+         * @return the Builder instance for database instantiation
+         */
+        public final Builder update(boolean isUpdate) {
+            this.isUpdate = isUpdate;
             return this;
         }
 
         public final synchronized void build() {
-            if(this.contentValues.size() == 0) {
+            if (this.contentValues.size() == 0) {
                 this.databaseManager
                         .setQuery(this.query)
-                        //.setCallback(this.callback)
+                        .setCallback(this.callback)
                         .get();
             } else {
                 this.databaseManager
                         .setContentValues(this.contentValues)
-                        //.setCallback(this.callback)
-                        .post();
+                        .setCallback(this.callback)
+                        .post(this.isUpdate);
             }
         }
 
-        public final synchronized void close() {
-            if(this.databaseManager != null) {
+        @Override
+        protected void finalize() throws Throwable {
+            super.finalize();
+            this.close();
+        }
+
+        final synchronized void close() {
+            if (this.databaseManager != null) {
                 this.databaseManager.close();
+                this.search = null;
+                this.callback = null;
+                this.longitude = 0;
+                this.latitude = 0;
+                this.query = null;
+                this.range = 0;
+                this.contentValues = null;
             }
         }
     }
@@ -195,7 +264,7 @@ public class DatabaseManager {
 
 class DatabaseUtils {
     enum DatabaseRequestType {
-        DROP_TABLE, GET_LOCATIONS, PUT_LOCATION, CREATE_TABLE
+        DROP_TABLE, GET_LOCATIONS, GET_BY_NAME, CREATE_TABLE
     }
 
     static final class FeedReaderContract {
@@ -234,6 +303,7 @@ final class DatabaseQueryBuilder {
 
     static String selectAll(float lat, float lng, float rad) {
         return "SELECT " +
+                DatabaseUtils.FeedReaderContract.FeedEntry._ID + ", " +
                 DatabaseUtils.FeedReaderContract.FeedEntry.COLUMN_NAME_TITLE + ", " +
                 DatabaseUtils.FeedReaderContract.FeedEntry.COLUMN_NAME_NOTE + ", " +
                 DatabaseUtils.FeedReaderContract.FeedEntry.COLUMN_NAME_RATING + ", " +
@@ -244,6 +314,26 @@ final class DatabaseQueryBuilder {
                 "FROM " +
                 DatabaseUtils.FeedReaderContract.FeedEntry.TABLE_NAME +
                 "WHERE " +
+                DatabaseUtils.FeedReaderContract.FeedEntry.DISTANCE +
+                " < " + rad + " " +
+                "ORDER BY " + DatabaseUtils.FeedReaderContract.FeedEntry.DISTANCE + " ASC";
+    }
+
+    static String selectByName(float lat, float lng, float rad, String search) {
+        return "SELECT " +
+                DatabaseUtils.FeedReaderContract.FeedEntry._ID + ", " +
+                DatabaseUtils.FeedReaderContract.FeedEntry.COLUMN_NAME_TITLE + ", " +
+                DatabaseUtils.FeedReaderContract.FeedEntry.COLUMN_NAME_NOTE + ", " +
+                DatabaseUtils.FeedReaderContract.FeedEntry.COLUMN_NAME_RATING + ", " +
+                DatabaseUtils.FeedReaderContract.FeedEntry.COLUMN_NAME_LATITUDE + ", " +
+                DatabaseUtils.FeedReaderContract.FeedEntry.COLUMN_NAME_LONGITUDE + ", " +
+                DatabaseUtils.FeedReaderContract.FeedEntry.COLUMN_NAME_IMAGES + ", " +
+                distance(lat, lng) + " AS " + DatabaseUtils.FeedReaderContract.FeedEntry.DISTANCE + " " +
+                "FROM " +
+                DatabaseUtils.FeedReaderContract.FeedEntry.TABLE_NAME +
+                "WHERE " +
+                DatabaseUtils.FeedReaderContract.FeedEntry.COLUMN_NAME_TITLE + " LIKE " +
+                "%" + search + "% AND " +
                 DatabaseUtils.FeedReaderContract.FeedEntry.DISTANCE +
                 " < " + rad + " " +
                 "ORDER BY " + DatabaseUtils.FeedReaderContract.FeedEntry.DISTANCE + " ASC";
