@@ -6,6 +6,9 @@ import android.database.Cursor;
 import android.database.sqlite.SQLiteDatabase;
 import android.provider.BaseColumns;
 
+import com.lexu.kia.Model.LocationBuilder;
+import com.lexu.kia.Model.LocationEntry;
+
 import java.util.ArrayList;
 
 public class DatabaseManager {
@@ -54,8 +57,50 @@ public class DatabaseManager {
         }
 
         Cursor cursor = mDatabase.rawQuery(mQuery, null);
+        int COLUMN_INDEX_ID = cursor.getColumnIndex(DatabaseUtils.FeedReaderContract.FeedEntry._ID);
+        int COLUMN_INDEX_TITLE = cursor.getColumnIndex(DatabaseUtils.FeedReaderContract.FeedEntry.COLUMN_NAME_TITLE);
+        int COLUMN_INDEX_COMMENTS = cursor.getColumnIndex(DatabaseUtils.FeedReaderContract.FeedEntry.COLUMN_NAME_NOTE);
+        int COLUMN_INDEX_RATING = cursor.getColumnIndex(DatabaseUtils.FeedReaderContract.FeedEntry.COLUMN_NAME_RATING);
+        int COLUMN_INDEX_LATITUDE = cursor.getColumnIndex(DatabaseUtils.FeedReaderContract.FeedEntry.COLUMN_NAME_LATITUDE);
+        int COLUMN_INDEX_LONGITUDE = cursor.getColumnIndex(DatabaseUtils.FeedReaderContract.FeedEntry.COLUMN_NAME_LONGITUDE);
+        int COLUMN_INDEX_IMAGES = cursor.getColumnIndex(DatabaseUtils.FeedReaderContract.FeedEntry.COLUMN_NAME_IMAGES);
 
-        //TODO: send Cursor for processing
+        cursor.moveToFirst();
+        do {
+            long _ID = cursor.getLong(COLUMN_INDEX_ID);
+            String title = cursor.getString(COLUMN_INDEX_TITLE);
+            String notes = cursor.getString(COLUMN_INDEX_COMMENTS);
+            double rating = cursor.getDouble(COLUMN_INDEX_RATING);
+            float lat = cursor.getFloat(COLUMN_INDEX_LATITUDE);
+            float lng = cursor.getFloat(COLUMN_INDEX_LONGITUDE);
+            String images = cursor.getString(COLUMN_INDEX_IMAGES);
+
+            if(_ID < 0) {
+                mCallback.onFailure(
+                        new DatabaseCallback.ResponseData.Builder<String>()
+                        .data("An error occurred")
+                        .message("Could not retrieve data from database")
+                        .status(DatabaseCallback.ResponseStatus.FAILURE)
+                        .build()
+                );
+            } else {
+                mCallback.onComplete(
+                        new DatabaseCallback.ResponseData.Builder<LocationEntry>()
+                        .data(
+                                new LocationBuilder()
+                                        .with(_ID)
+                                        .with(title, notes)
+                                        .with(rating)
+                                        .with(lat, lng)
+                                        .with(images)
+                                        .build()
+                        )
+                        .status(DatabaseCallback.ResponseStatus.SUCCESS)
+                        .message("Success")
+                        .build()
+                );
+            }
+        } while (cursor.moveToNext());
         cursor.close();
     }
 
@@ -149,6 +194,30 @@ public class DatabaseManager {
         }
 
         /**
+         * Set the new entries / entries to update
+         * @param entries that need to be inserted / updated
+         * @return the Builder instance used for database instantiation
+         */
+        public final synchronized Builder with(ArrayList<LocationEntry> entries) {
+            this.contentValues = new ArrayList<ContentValues>();
+
+            for(LocationEntry e: entries) {
+                ContentValues cv = new ContentValues();
+                cv.put(DatabaseUtils.FeedReaderContract.FeedEntry._ID, e.getId());
+                cv.put(DatabaseUtils.FeedReaderContract.FeedEntry.COLUMN_NAME_TITLE, e.getName());
+                cv.put(DatabaseUtils.FeedReaderContract.FeedEntry.COLUMN_NAME_NOTE, e.getComments());
+                cv.put(DatabaseUtils.FeedReaderContract.FeedEntry.COLUMN_NAME_RATING, e.getRating());
+                cv.put(DatabaseUtils.FeedReaderContract.FeedEntry.COLUMN_NAME_LATITUDE, e.getLatitude());
+                cv.put(DatabaseUtils.FeedReaderContract.FeedEntry.COLUMN_NAME_LONGITUDE, e.getLongitude());
+                cv.put(DatabaseUtils.FeedReaderContract.FeedEntry.COLUMN_NAME_IMAGES, e.getImages());
+
+                this.contentValues.add(cv);
+            }
+
+            return this;
+        }
+
+        /**
          * Set user's current position
          *
          * @param lat   of the user at that moment in time
@@ -156,7 +225,7 @@ public class DatabaseManager {
          * @param range set by the user
          * @return the Builder instance used for database instantiation
          */
-        public final Builder location(float lat, float lng, float range) {
+        public final Builder with(float lat, float lng, float range) {
             this.latitude = lat;
             this.longitude = lng;
             this.range = range;
@@ -169,7 +238,7 @@ public class DatabaseManager {
          * @param name of the location to search for
          * @return the Builder instance used for database instantiation
          */
-        public final Builder search(String name) {
+        public final Builder with(String name) {
             this.search = name;
             return this;
         }
@@ -184,7 +253,7 @@ public class DatabaseManager {
          * @return the Builder instance used for database instantiation
          * @see DatabaseUtils.DatabaseRequestType
          */
-        public final Builder option(DatabaseUtils.DatabaseRequestType requestType) {
+        public final Builder with(DatabaseUtils.DatabaseRequestType requestType) {
             switch (requestType) {
                 case CREATE_TABLE:
                     this.query = DatabaseQueryBuilder.createTable();
@@ -220,13 +289,16 @@ public class DatabaseManager {
          * Sets the flag for updating / inserting new records in the database
          *
          * @param isUpdate operation to be done on the database
-         * @return the Builder instance for database instantiation
+         * @return the Builder instance used for database instantiation
          */
-        public final Builder update(boolean isUpdate) {
+        public final Builder with(boolean isUpdate) {
             this.isUpdate = isUpdate;
             return this;
         }
 
+        /**
+         * Launches the request to the database
+         */
         public final synchronized void build() {
             if (this.contentValues.size() == 0) {
                 this.databaseManager
@@ -241,12 +313,19 @@ public class DatabaseManager {
             }
         }
 
+        /**
+         * Closes the database on instance destruction
+         * @throws Throwable
+         */
         @Override
         protected void finalize() throws Throwable {
             super.finalize();
             this.close();
         }
 
+        /**
+         * Used for closing the database and resetting all data used by the manager
+         */
         final synchronized void close() {
             if (this.databaseManager != null) {
                 this.databaseManager.close();
@@ -262,7 +341,7 @@ public class DatabaseManager {
     }
 }
 
-class DatabaseUtils {
+final class DatabaseUtils {
     enum DatabaseRequestType {
         DROP_TABLE, GET_LOCATIONS, GET_BY_NAME, CREATE_TABLE
     }

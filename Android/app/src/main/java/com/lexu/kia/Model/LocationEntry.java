@@ -11,27 +11,30 @@ public class LocationEntry {
     private String mName = null;
     private String mComments = null;
     private double mRating = -1;
-    private float mLatitude = 0;
-    private float mLongitude = 0;
+    private float mLatitude = Float.MIN_VALUE;
+    private float mLongitude = Float.MIN_VALUE;
+    private String mImages = null;
 
-    private  LocationEntry(@NonNull String name, @Nullable String comments, double rating, float lat, float lng) {
+    private  LocationEntry(@NonNull String name, @Nullable String comments, double rating, float lat, float lng, @Nullable String images) {
         mName = name;
         mComments = comments;
         mRating = rating;
         mLatitude = lat;
         mLongitude = lng;
+        mImages = images;
     }
 
-    private LocationEntry(long id, @NonNull String name, @Nullable String comments, double rating, float lat, float lng) {
+    private LocationEntry(long id, @NonNull String name, @Nullable String comments, double rating, float lat, float lng, @Nullable String images) {
         m_ID = id;
         mName = name;
         mComments = comments;
         mRating = rating;
         mLatitude = lat;
         mLongitude = lng;
+        mImages = images;
     }
 
-    public long getM_ID() {
+    public long getId() {
         return m_ID;
     }
 
@@ -53,6 +56,10 @@ public class LocationEntry {
 
     public float getLongitude() {
         return mLongitude;
+    }
+
+    public String getImages() {
+        return mImages;
     }
 
     protected void setId(long id) {
@@ -79,47 +86,53 @@ public class LocationEntry {
         mLongitude = longitude;
     }
 
-    protected static abstract class Builder {
-        private static final String TAG = "Builder";
+    protected static abstract class AbstractBuilder<T> {
+        private static final String TAG = "AbstractBuilder";
 
         long id = -1;
         String name = null;
         String comm = null;
         double rating = -1;
-        float lat = 0;
-        float lng = 0;
+        float lat = Float.MIN_VALUE;
+        float lng = Float.MIN_VALUE;
+        String images = null;
 
-        Builder() {
+        AbstractBuilder() {
         }
 
-        public final Builder with(long id) {
+        public T with(long id) {
             this.id = id;
-            return this;
+            return (T) this;
         }
 
-        public final Builder with(String name, String comm) {
+        public T with(String name, String comm) {
             this.name = name;
             this.comm = comm;
-            return this;
+            return (T) this;
         }
 
-        public final Builder with(double rating) {
+        public T with(double rating) {
             this.rating = rating;
-            return this;
+            return (T) this;
         }
 
-        public final Builder with(float lat, float lng) {
+        public T with(float lat, float lng) {
             this.lat = lat;
             this.lng = lng;
-            return this;
+            return (T) this;
+        }
+
+        public T with(String images) {
+            this.images = images;
+            return (T) this;
         }
 
         public LocationEntry build() {
             LocationEntry entry = null;
             if(this.id != -1) {
-                entry = new LocationEntry(this.id, this.name, this.comm, this.rating, this.lat, this.lng);
+                entry = new LocationEntry(this.id, this.name, this.comm, this.rating, this.lat, this.lng, this.images);
             } else {
-                entry = new LocationEntry(this.name, this.comm, this.rating, this.lat, this.lng);
+                entry = new LocationEntry(this.name, this.comm, this.rating, this.lat, this.lng, this.images);
             }
 
             this.reset();
@@ -134,49 +147,5 @@ public class LocationEntry {
             this.lat = 0;
             this.lng = 0;
         }
-    }
-}
-
-final class Builder extends LocationEntry.Builder {
-
-    private LocationEntry entry = null;
-
-    private Builder() {
-        super();
-    }
-
-    public LocationEntry.Builder update(LocationEntry entry) {
-        this.entry = entry;
-        return this;
-    }
-
-    @Override
-    public LocationEntry build() {
-        if(this.id != -1) {
-            this.entry.setId(this.id);
-        }
-
-        if(this.name != null) {
-            this.entry.setName(this.name);
-        }
-
-        if(this.comm != null) {
-            this.entry.setComments(this.comm);
-        }
-
-        if(this.rating != -1) {
-            this.entry.setRating(this.rating);
-        }
-
-        if(this.lat != Float.MIN_VALUE) {
-            this.entry.setLatitude(this.lat);
-        }
-
-        if(this.lng != Float.MIN_VALUE) {
-            this.entry.setLongitude(this.lng);
-        }
-
-        this.reset();
-        return this.entry;
     }
 }
